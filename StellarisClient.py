@@ -1,38 +1,44 @@
-import asyncio
-import websockets
-from archipelago.context import CommonContext
+# New Implementation of StellarisClient.py
 
-class StellarisClient(CommonContext):
-    def __init__(self, server_url):
-        super().__init__()  # Initialize CommonContext
-        self.server_url = server_url
+import time
+import json
+import os
+from common_context import CommonContext
+from archipelago_client import ArchipelagoClient
 
-    async def monitor_game(self):
+class StellarisClient:
+    def __init__(self, save_file_path):
+        self.save_file_path = save_file_path
+        self.tech_progress = {}
+        self.archipelago_client = ArchipelagoClient()
+
+    def parse_tech_status(self):
+        with open(self.save_file_path, 'r') as save_file:
+            data = json.load(save_file)
+            # Assuming the tech_status is structured in some specific way
+            tech_status = data.get('tech_status', {})
+            # Only extract player character's tech progress
+            self.tech_progress = tech_status.get('player_character', {})
+
+    def monitor_save_file(self):
+        last_progress = self.tech_progress.copy()
+
         while True:
-            # Logic to monitor game progress
-            await asyncio.sleep(1)  # Replace with actual game logic
+            time.sleep(5)  # Check every 5 seconds
+            self.parse_tech_status()
+            new_progress = self.tech_progress.copy()
+            if new_progress != last_progress:
+                self.check_for_new_technologies(last_progress, new_progress)
+                last_progress = new_progress
 
-    async def sync_location(self):
-        # Logic to sync location checks with the Archipelago server
-        await self.send_data_to_server({'type': 'location', 'data': self.get_current_location()})
+    def check_for_new_technologies(self, old_progress, new_progress):
+        for tech, level in new_progress.items():
+            if tech in old_progress and old_progress[tech] < level:
+                print(f'Technology completed: {tech} from level {old_progress[tech]} to {level}')
+                self.archipelago_client.send_location_check(tech)
 
-    async def sync_items(self):
-        # Logic to sync received items with the Archipelago server
-        await self.send_data_to_server({'type': 'items', 'data': self.get_received_items()})
-
-    async def send_data_to_server(self, data):
-        async with websockets.connect(self.server_url) as websocket:
-            await websocket.send(data)
-            response = await websocket.recv()
-            print(f'Response from server: {response}')
-
-    async def run(self):
-        await asyncio.gather(
-            self.monitor_game(),
-            self.sync_location(),
-            self.sync_items(),
-        )
-
+# Example usage
 if __name__ == '__main__':
-    client = StellarisClient('ws://example.com/socket')  # Replace with actual server URL
-    asyncio.run(client.run())
+    save_file = 'path/to/your/save_file.sav'
+    client = StellarisClient(save_file)
+    client.monitor_save_file()
