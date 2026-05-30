@@ -199,6 +199,8 @@ class WesnothContext(CommonContext):
         self.highest_processed_item_index = 0
         self.sync_requested = False
         self.logged_checks_seen: set[str] = set()
+        self.pending_locations: set[int] = set()
+        self.last_written_items: list[str] = []
 
     async def server_auth(self, password_requested: bool = False) -> None:
         if password_requested and not self.password:
@@ -209,6 +211,8 @@ class WesnothContext(CommonContext):
     def on_package(self, cmd: str, args: dict[str, Any]) -> None:
         if cmd == "Connected":
             self.slot_data = dict(args.get("slot_data", {}))
+            self.sync_requested = True
+        elif cmd in {"ReceivedItems", "RoomUpdate"}:
             self.sync_requested = True
 
     def run_gui(self) -> None:
@@ -237,10 +241,20 @@ class WesnothContext(CommonContext):
             location_name_to_id=dict(LOCATION_NAME_TO_ID),
         )
 
+    def write_current_state(self, bridge_state: BridgeState) -> None:
+        current_state = self.build_bridge_state(bridge_state)
+        write_bridge_state(current_state, self.bridge_path)
+        if current_state.received_items != self.last_written_items:
+            write_item_state(current_state.received_items, self.addon_dir)
+            new_items = current_state.received_items[len(self.last_written_items):]
+            self.last_written_items = list(current_state.received_items)
+            if new_items:
+                logger.info("Wrote received Wesnoth items: %s", ", ".join(new_items))
+
 
 async def game_watcher(ctx: WesnothContext) -> None:
     write_bridge_state(ctx.build_bridge_state(read_bridge_state(ctx.bridge_path)), ctx.bridge_path)
-    write_item_state([], ctx.addon_dir)
+    ctx.write_current_state(read_bridge_state(ctx.bridge_path))
     logger.info("Writing Wesnoth client status file at %s", ctx.bridge_path)
     if ctx.wesnoth_userdir:
         logger.info("Watching Wesnoth saves under %s", ctx.wesnoth_userdir / "saves")
@@ -252,8 +266,7 @@ async def game_watcher(ctx: WesnothContext) -> None:
     while not ctx.exit_event.is_set():
         try:
             bridge_state = read_save_bridge_state(ctx.wesnoth_userdir)
-            current_state = ctx.build_bridge_state(bridge_state)
-            write_bridge_state(current_state, ctx.bridge_path)
+            ctx.write_current_state(bridge_state)
 
             newly_seen_names = bridge_state.checked_locations - ctx.logged_checks_seen
             if newly_seen_names:
@@ -265,14 +278,18 @@ async def game_watcher(ctx: WesnothContext) -> None:
                 for name in bridge_state.checked_locations
                 if name in LOCATION_NAME_TO_ID
             }
-            new_ids = ids_to_send - ctx.locations_checked
-            if new_ids:
-                ctx.locations_checked |= new_ids
-                sent = await ctx.check_locations(new_ids)
+            ctx.pending_locations |= ids_to_send - ctx.locations_checked - ctx.checked_locations
+            if ctx.pending_locations:
+                sent = await ctx.check_locations(ctx.pending_locations)
                 if sent:
+                    ctx.locations_checked |= sent
+                    ctx.pending_locations -= sent
                     logger.info("Sent Wesnoth checks: %s", ", ".join(
                         ctx.location_names.lookup_in_game(location_id, ctx.game) for location_id in sorted(sent)
                     ))
+                    await ctx.send_msgs([{"cmd": "Sync"}])
+                elif ctx.server:
+                    await ctx.send_msgs([{"cmd": "Sync"}])
 
             if bridge_state.goal_complete and not ctx.finished_game:
                 await ctx.send_msgs([{"cmd": "StatusUpdate", "status": ClientStatus.CLIENT_GOAL}])
@@ -280,14 +297,9 @@ async def game_watcher(ctx: WesnothContext) -> None:
                 logger.info("Sent Wesnoth goal completion.")
 
             if ctx.sync_requested or len(ctx.items_received) != ctx.highest_processed_item_index:
-                new_items = ctx.build_bridge_state(bridge_state).received_items[ctx.highest_processed_item_index:]
                 ctx.highest_processed_item_index = len(ctx.items_received)
                 ctx.sync_requested = False
-                current_state = ctx.build_bridge_state(bridge_state)
-                write_bridge_state(current_state, ctx.bridge_path)
-                write_item_state(current_state.received_items, ctx.addon_dir)
-                if new_items:
-                    logger.info("Wrote received Wesnoth items: %s", ", ".join(new_items))
+                ctx.write_current_state(bridge_state)
         except Exception as exc:
             logger.exception("Error while syncing Wesnoth bridge: %s", exc)
 
