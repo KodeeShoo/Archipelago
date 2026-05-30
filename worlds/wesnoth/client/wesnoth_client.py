@@ -128,6 +128,12 @@ def write_item_state(received_items: list[str], addon_dir: Path | None) -> None:
     temp_path.replace(path)
 
 
+def clear_item_state(addon_dir: Path | None) -> None:
+    if not addon_dir:
+        return
+    write_item_state([], addon_dir)
+
+
 def read_save_text(path: Path) -> str:
     if path.suffix.lower() == ".gz":
         with gzip.open(path, "rt", encoding="utf-8", errors="replace") as save_file:
@@ -200,7 +206,7 @@ class WesnothContext(CommonContext):
         self.sync_requested = False
         self.logged_checks_seen: set[str] = set()
         self.pending_locations: set[int] = set()
-        self.last_written_items: list[str] = []
+        self.last_written_items: list[str] | None = None
 
     async def server_auth(self, password_requested: bool = False) -> None:
         if password_requested and not self.password:
@@ -246,13 +252,16 @@ class WesnothContext(CommonContext):
         write_bridge_state(current_state, self.bridge_path)
         if current_state.received_items != self.last_written_items:
             write_item_state(current_state.received_items, self.addon_dir)
-            new_items = current_state.received_items[len(self.last_written_items):]
+            previous_count = len(self.last_written_items or [])
+            new_items = current_state.received_items[previous_count:]
             self.last_written_items = list(current_state.received_items)
             if new_items:
                 logger.info("Wrote received Wesnoth items: %s", ", ".join(new_items))
 
 
 async def game_watcher(ctx: WesnothContext) -> None:
+    clear_item_state(ctx.addon_dir)
+    logger.info("Cleared stale Wesnoth received items.")
     write_bridge_state(ctx.build_bridge_state(read_bridge_state(ctx.bridge_path)), ctx.bridge_path)
     ctx.write_current_state(read_bridge_state(ctx.bridge_path))
     logger.info("Writing Wesnoth client status file at %s", ctx.bridge_path)
