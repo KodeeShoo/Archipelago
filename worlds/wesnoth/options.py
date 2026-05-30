@@ -1,16 +1,10 @@
 from dataclasses import dataclass
 
-from Options import DefaultOnToggle, OptionGroup, PerGameCommonOptions, Range, Toggle
-
-
-class GoalRequiresChallenges(Toggle):
-    """Require optional challenge checks before the campaign can be completed."""
-
-    display_name = "Goal Requires Challenges"
+from Options import DefaultOnToggle, OptionGroup, PerGameCommonOptions, Range
 
 
 class AmbushTrapChance(Range):
-    """Percentage chance for filler rewards to become Ambush traps."""
+    """Unused in the smoke-test item pool. Reserved for later trap support."""
 
     display_name = "Ambush Trap Chance"
     range_start = 0
@@ -35,7 +29,6 @@ class EnableBridgeFile(DefaultOnToggle):
 
 @dataclass
 class WesnothOptions(PerGameCommonOptions):
-    goal_requires_challenges: GoalRequiresChallenges
     ambush_trap_chance: AmbushTrapChance
     starting_gold: StartingGold
     enable_bridge_file: EnableBridgeFile
@@ -44,7 +37,7 @@ class WesnothOptions(PerGameCommonOptions):
 option_groups = [
     OptionGroup(
         "Campaign Options",
-        [GoalRequiresChallenges, StartingGold],
+        [StartingGold],
     ),
     OptionGroup(
         "Bridge Options",
@@ -59,13 +52,11 @@ option_groups = [
 
 option_presets = {
     "starter": {
-        "goal_requires_challenges": False,
         "ambush_trap_chance": 0,
         "starting_gold": 150,
         "enable_bridge_file": True,
     },
     "campaign": {
-        "goal_requires_challenges": False,
         "ambush_trap_chance": 10,
         "starting_gold": 100,
         "enable_bridge_file": True,

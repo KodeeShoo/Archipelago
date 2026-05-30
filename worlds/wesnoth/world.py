@@ -19,16 +19,10 @@ class WesnothWorld(World):
     item_name_to_id = items.ITEM_NAME_TO_ID
     item_name_groups = {
         "Recruit Unlocks": {
-            "Recruit: Spearman",
             "Recruit: Bowman",
             "Recruit: Mage",
-            "Recruit: Horseman",
-            "Recruit: Merman Fighter",
         },
-        "Alliances": {"Elvish Alliance", "Dwarvish Alliance"},
-        "Support": {"Extra Gold", "Recall Slot", "Healing Draught"},
-        "Filler": {"Supply Cache", "Scout Report"},
-        "Traps": {"Ambush"},
+        "Support": {"Extra Gold"},
     }
 
     location_name_to_id = locations.LOCATION_NAME_TO_ID

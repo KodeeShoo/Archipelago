@@ -30,7 +30,7 @@ Items should be effects that can be applied at any time:
 
 ## Bridge Contract
 
-The client and add-on should agree on a small state schema:
+The client and add-on agree on a small state schema:
 
 ```json
 {
@@ -40,7 +40,7 @@ The client and add-on should agree on a small state schema:
 }
 ```
 
-The AP client owns network sync. Wesnoth owns game state. The bridge maps between those two worlds.
+The AP client owns network sync. Wesnoth owns game state. The bridge maps between those two worlds. For the first smoke test, the bridge is a JSON file watched by the Python client and read/written by the Wesnoth add-on.
 
 ## Open Design Questions
 

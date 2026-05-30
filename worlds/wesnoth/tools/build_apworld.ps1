@@ -22,6 +22,11 @@ if (Test-Path -LiteralPath $staging) {
 New-Item -ItemType Directory -Force -Path $staging | Out-Null
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
 Copy-Item -LiteralPath $source -Destination (Join-Path $staging "wesnoth") -Recurse
+Get-ChildItem -LiteralPath (Join-Path $staging "wesnoth") -Recurse -Directory -Filter "__pycache__" |
+    Remove-Item -Recurse -Force
+Get-ChildItem -LiteralPath (Join-Path $staging "wesnoth") -Recurse -File |
+    Where-Object { $_.Extension -in @(".pyc", ".pyo") } |
+    Remove-Item -Force
 
 $resolvedOutput = Join-Path $PSScriptRoot $OutputPath
 if (Test-Path -LiteralPath $resolvedOutput) {

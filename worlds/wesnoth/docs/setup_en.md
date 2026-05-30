@@ -12,9 +12,14 @@
 1. Install the Archipelago world.
 2. Install the Wesnoth add-on.
 3. Generate a multiworld containing `Battle for Wesnoth`.
-4. Start the Wesnoth AP client bridge.
+4. Start the Wesnoth AP client bridge:
+
+```powershell
+python -m worlds.wesnoth.client.wesnoth_client --connect SERVER:PORT
+```
+
 5. Start the Wesnoth campaign.
 6. Complete campaign milestones to send checks.
-7. Finish the Crownlands objective to complete the slot.
+7. Defeat the prototype enemy leader to complete the slot.
 
-The bridge is still a framework. Until the client and add-on state sync are completed, use this world to validate generation logic and item/location names.
+The first smoke test uses `Tutorial: First Village`, `Tutorial: First Level Up`, and `Tutorial: Enemy Leader Defeated`.

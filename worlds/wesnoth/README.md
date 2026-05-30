@@ -7,7 +7,7 @@ It is split into three pieces:
 - `wesnoth_addon/Battle_for_Wesnoth_AP/`: a Wesnoth add-on skeleton for a custom AP-aware campaign.
 - `client/`: a Python bridge/client sketch for syncing the AP server with Wesnoth-visible state.
 
-The recommended first milestone is a custom Wesnoth campaign. It avoids patching mainline campaigns while proving the important loop:
+The first milestone is a custom Wesnoth campaign. It avoids patching mainline campaigns while proving the important loop:
 
 1. Archipelago generates a seed for `Battle for Wesnoth`.
 2. The AP client connects to the server and receives item/location data.
@@ -46,6 +46,48 @@ Copy `wesnoth_addon/Battle_for_Wesnoth_AP` to Wesnoth's add-ons directory:
 
 Then start Wesnoth and look for the `Battle for Wesnoth AP Prototype` campaign.
 
+## Current Smoke Test
+
+The current playable test is intentionally tiny:
+
+- Checks:
+  - `Tutorial: First Village`
+  - `Tutorial: First Level Up`
+  - `Tutorial: Enemy Leader Defeated`
+- Items:
+  - `Recruit: Bowman`
+  - `Recruit: Mage`
+  - `Extra Gold`
+
+`Recruit: Bowman` lets the prototype campaign recruit Bowmen. `Recruit: Mage` lets it recruit Mages. `Extra Gold` gives side 1 a one-time 50 gold bonus.
+
+## Running the Smoke Test
+
+1. Generate a one-player `Battle for Wesnoth` seed from this checkout.
+2. Install `wesnoth_addon/Battle_for_Wesnoth_AP` into Wesnoth's add-ons folder.
+3. Start the AP server with the generated archive.
+4. Start the client:
+
+```powershell
+python -m worlds.wesnoth.client.wesnoth_client --connect SERVER:PORT
+```
+
+The client also appears in Archipelago Launcher as `Battle for Wesnoth Client`.
+
+The default bridge file is:
+
+```text
+%USERPROFILE%\Documents\My Games\WesnothAP\bridge_state.json
+```
+
+You can override it for the client with:
+
+```powershell
+python -m worlds.wesnoth.client.wesnoth_client --connect SERVER:PORT --bridge-file "C:\path\to\bridge_state.json"
+```
+
+In Wesnoth, set the campaign variable `ap_bridge_file` to the same path if your add-on cannot use the default path.
+
 ## Current Design
 
 The world currently treats Wesnoth as a campaign randomizer:
@@ -60,9 +102,10 @@ That is enough to validate the Archipelago integration before investing in deep 
 
 1. Replace prototype checks with real checks from the campaign you want to randomize.
 2. Decide whether this stays a custom campaign or patches mainline campaigns.
-3. Implement the bridge path:
-   - simplest: external client reads/writes a state file exported by the add-on;
-   - stronger: modify Wesnoth or embed a networking-capable module for direct communication.
+3. Harden the bridge path after in-game testing:
+   - confirm Wesnoth's Lua sandbox can write the default bridge file on your installed version;
+   - fall back to a user-selected bridge path if needed;
+   - replace the tiny JSON parser with a stronger add-on-side strategy if mainline Wesnoth exposes one.
 4. Add regression tests once the world is copied into an Archipelago checkout.
 
 ## Notes
