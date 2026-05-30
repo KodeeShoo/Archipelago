@@ -251,6 +251,8 @@ async def game_watcher(ctx: WesnothContext) -> None:
     while not ctx.exit_event.is_set():
         try:
             bridge_state = read_save_bridge_state(ctx.wesnoth_userdir)
+            current_state = ctx.build_bridge_state(bridge_state)
+            write_bridge_state(current_state, ctx.bridge_path)
 
             ids_to_send = {
                 LOCATION_NAME_TO_ID[name]
@@ -274,9 +276,9 @@ async def game_watcher(ctx: WesnothContext) -> None:
             if ctx.sync_requested or len(ctx.items_received) != ctx.highest_processed_item_index:
                 ctx.highest_processed_item_index = len(ctx.items_received)
                 ctx.sync_requested = False
-                state = ctx.build_bridge_state(bridge_state)
-                write_bridge_state(state, ctx.bridge_path)
-                write_item_state(state.received_items, ctx.addon_dir)
+                current_state = ctx.build_bridge_state(bridge_state)
+                write_bridge_state(current_state, ctx.bridge_path)
+                write_item_state(current_state.received_items, ctx.addon_dir)
         except Exception as exc:
             logger.exception("Error while syncing Wesnoth bridge: %s", exc)
 

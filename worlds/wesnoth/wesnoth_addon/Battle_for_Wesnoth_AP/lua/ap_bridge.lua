@@ -3,8 +3,13 @@ local bridge = {}
 local ITEM_STATE_FILE = "~add-ons/Battle_for_Wesnoth_AP/ap_items.json"
 
 local function get_filesystem()
-    local ok, module = pcall(wesnoth.require, "filesystem")
-    if ok and module then
+    local ok, module = pcall(function()
+        if rawget and _G then
+            return rawget(_G, "filesystem")
+        end
+        return nil
+    end)
+    if ok then
         return module
     end
     return nil
