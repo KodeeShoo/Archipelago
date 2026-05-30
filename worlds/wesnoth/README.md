@@ -74,19 +74,21 @@ python -m worlds.wesnoth.client.wesnoth_client --connect SERVER:PORT
 
 The client also appears in Archipelago Launcher as `Battle for Wesnoth Client`.
 
-The default bridge file is:
+The client writes a status file here:
 
 ```text
 %USERPROFILE%\Documents\My Games\WesnothAP\bridge_state.json
 ```
 
-You can override it for the client with:
+Checks are read from the latest `Wesnoth AP-*` autosave in your Wesnoth user data folder. Received items are written to the installed add-on as `ap_items.json`, because Wesnoth Lua can read add-on files but does not expose general-purpose file writing.
+
+You can override paths for the client with:
 
 ```powershell
-python -m worlds.wesnoth.client.wesnoth_client --connect SERVER:PORT --bridge-file "C:\path\to\bridge_state.json"
+python -m worlds.wesnoth.client.wesnoth_client --connect SERVER:PORT --wesnoth-userdir "C:\Users\you\Documents\My Games\Wesnoth1.18"
 ```
 
-In Wesnoth, set the campaign variable `ap_bridge_file` to the same path if your add-on cannot use the default path.
+After completing a check in Wesnoth, end the turn or save so the client can see the updated save file.
 
 ## Current Design
 

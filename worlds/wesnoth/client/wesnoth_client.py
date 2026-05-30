@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import gzip
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -26,6 +28,8 @@ from worlds.wesnoth.locations import LOCATION_NAME_TO_ID
 GAME_NAME = "Battle for Wesnoth"
 DEFAULT_BRIDGE_FILE = Path.home() / "Documents" / "My Games" / "WesnothAP" / "bridge_state.json"
 BRIDGE_ENV_VAR = "WESNOTH_AP_BRIDGE"
+ADDON_ID = "Battle_for_Wesnoth_AP"
+ITEM_STATE_FILENAME = "ap_items.json"
 
 
 @dataclass
@@ -86,12 +90,94 @@ def write_bridge_state(state: BridgeState, path: Path) -> None:
     temp_path.replace(path)
 
 
+def candidate_wesnoth_userdirs() -> list[Path]:
+    candidates = [
+        Path.home() / "OneDrive" / "Documents" / "My Games" / "Wesnoth1.18",
+        Path.home() / "Documents" / "My Games" / "Wesnoth1.18",
+        Path.home() / "OneDrive" / "Documents" / "My Games" / "Wesnoth1.16",
+        Path.home() / "Documents" / "My Games" / "Wesnoth1.16",
+    ]
+    return [path for path in candidates if path.exists()]
+
+
+def detect_wesnoth_userdir(cli_path: str | None = None) -> Path | None:
+    if cli_path:
+        path = Path(cli_path).expanduser()
+        return path if path.exists() else None
+
+    for path in candidate_wesnoth_userdirs():
+        if (path / "data" / "add-ons" / ADDON_ID).exists() or (path / "saves").exists():
+            return path
+    return None
+
+
+def find_addon_dir(userdir: Path | None) -> Path | None:
+    if not userdir:
+        return None
+    addon_dir = userdir / "data" / "add-ons" / ADDON_ID
+    return addon_dir if addon_dir.exists() else None
+
+
+def write_item_state(received_items: list[str], addon_dir: Path | None) -> None:
+    if not addon_dir:
+        return
+    payload = {"received_items": received_items}
+    path = addon_dir / ITEM_STATE_FILENAME
+    temp_path = path.with_suffix(path.suffix + ".tmp")
+    temp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    temp_path.replace(path)
+
+
+def read_save_text(path: Path) -> str:
+    if path.suffix.lower() == ".gz":
+        with gzip.open(path, "rt", encoding="utf-8", errors="replace") as save_file:
+            return save_file.read()
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
+def latest_wesnoth_ap_save(userdir: Path | None) -> Path | None:
+    if not userdir:
+        return None
+    saves_dir = userdir / "saves"
+    if not saves_dir.exists():
+        return None
+
+    saves = [
+        path
+        for path in saves_dir.iterdir()
+        if path.is_file()
+        and path.name.startswith("Wesnoth AP-")
+        and (path.suffix.lower() == ".gz" or path.suffix == "")
+    ]
+    if not saves:
+        return None
+    return max(saves, key=lambda path: path.stat().st_mtime)
+
+
+def parse_save_bridge_state(save_text: str) -> BridgeState:
+    checked = {
+        match.group(1)
+        for match in re.finditer(r'\[ap_checked_locations\][\s\S]*?name="([^"]+)"[\s\S]*?\[/ap_checked_locations\]', save_text)
+    }
+    goal_complete = re.search(r'\bap_goal_complete="?yes"?', save_text) is not None
+    return BridgeState(checked_locations=checked, goal_complete=goal_complete)
+
+
+def read_save_bridge_state(userdir: Path | None) -> BridgeState:
+    latest_save = latest_wesnoth_ap_save(userdir)
+    if not latest_save:
+        return BridgeState()
+    return parse_save_bridge_state(read_save_text(latest_save))
+
+
 class WesnothCommandProcessor(ClientCommandProcessor):
     ctx: "WesnothContext"
 
     def _cmd_bridge(self) -> None:
-        """Show the bridge file path used by the Wesnoth add-on."""
-        self.output(f"Wesnoth bridge file: {self.ctx.bridge_path}")
+        """Show the paths used by the Wesnoth bridge."""
+        self.output(f"Wesnoth status file: {self.ctx.bridge_path}")
+        self.output(f"Wesnoth user data: {self.ctx.wesnoth_userdir or 'not detected'}")
+        self.output(f"Wesnoth add-on dir: {self.ctx.addon_dir or 'not detected'}")
 
     def _cmd_resync(self) -> None:
         """Resend locally checked locations and rewrite received items to the bridge."""
@@ -104,9 +190,11 @@ class WesnothContext(CommonContext):
     command_processor = WesnothCommandProcessor
     items_handling = 0b111
 
-    def __init__(self, server_address: str | None, password: str | None, bridge_path: Path):
+    def __init__(self, server_address: str | None, password: str | None, bridge_path: Path, wesnoth_userdir: Path | None):
         super().__init__(server_address, password)
         self.bridge_path = bridge_path
+        self.wesnoth_userdir = wesnoth_userdir
+        self.addon_dir = find_addon_dir(wesnoth_userdir)
         self.slot_data: dict[str, Any] = {}
         self.highest_processed_item_index = 0
         self.sync_requested = False
@@ -151,11 +239,18 @@ class WesnothContext(CommonContext):
 
 async def game_watcher(ctx: WesnothContext) -> None:
     write_bridge_state(ctx.build_bridge_state(read_bridge_state(ctx.bridge_path)), ctx.bridge_path)
-    logger.info("Watching Wesnoth bridge file at %s", ctx.bridge_path)
+    write_item_state([], ctx.addon_dir)
+    logger.info("Writing Wesnoth client status file at %s", ctx.bridge_path)
+    if ctx.wesnoth_userdir:
+        logger.info("Watching Wesnoth saves under %s", ctx.wesnoth_userdir / "saves")
+    if ctx.addon_dir:
+        logger.info("Writing received items for Wesnoth at %s", ctx.addon_dir / ITEM_STATE_FILENAME)
+    else:
+        logger.warning("Could not detect installed Wesnoth add-on folder. Received items will not reach Wesnoth.")
 
     while not ctx.exit_event.is_set():
         try:
-            bridge_state = read_bridge_state(ctx.bridge_path)
+            bridge_state = read_save_bridge_state(ctx.wesnoth_userdir)
 
             ids_to_send = {
                 LOCATION_NAME_TO_ID[name]
@@ -179,7 +274,9 @@ async def game_watcher(ctx: WesnothContext) -> None:
             if ctx.sync_requested or len(ctx.items_received) != ctx.highest_processed_item_index:
                 ctx.highest_processed_item_index = len(ctx.items_received)
                 ctx.sync_requested = False
-                write_bridge_state(ctx.build_bridge_state(bridge_state), ctx.bridge_path)
+                state = ctx.build_bridge_state(bridge_state)
+                write_bridge_state(state, ctx.bridge_path)
+                write_item_state(state.received_items, ctx.addon_dir)
         except Exception as exc:
             logger.exception("Error while syncing Wesnoth bridge: %s", exc)
 
@@ -188,7 +285,12 @@ async def game_watcher(ctx: WesnothContext) -> None:
 
 async def async_main(args: argparse.Namespace) -> None:
     Utils.init_logging("WesnothClient", exception_logger="Client")
-    ctx = WesnothContext(args.connect, args.password, get_bridge_path(args.bridge_file))
+    ctx = WesnothContext(
+        args.connect,
+        args.password,
+        get_bridge_path(args.bridge_file),
+        detect_wesnoth_userdir(args.wesnoth_userdir),
+    )
     ctx.auth = getattr(args, "name", None)
     ctx.server_task = asyncio.create_task(server_loop(ctx), name="server loop")
     if gui_enabled:
@@ -208,7 +310,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--bridge-file",
         default=None,
-        help=f"Path to bridge_state.json. Defaults to the {BRIDGE_ENV_VAR} environment variable or {DEFAULT_BRIDGE_FILE}.",
+        help=f"Path to client status JSON. Defaults to the {BRIDGE_ENV_VAR} environment variable or {DEFAULT_BRIDGE_FILE}.",
+    )
+    parser.add_argument(
+        "--wesnoth-userdir",
+        default=None,
+        help="Path to the Wesnoth user data folder, such as Documents\\My Games\\Wesnoth1.18.",
     )
     return parser
 

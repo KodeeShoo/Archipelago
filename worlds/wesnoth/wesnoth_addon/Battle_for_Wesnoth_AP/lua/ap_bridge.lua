@@ -1,54 +1,26 @@
 local bridge = {}
 
-local function get_bridge_path()
-    local explicit = wesnoth.get_variable("ap_bridge_file")
-    if explicit and explicit ~= "" then
-        return explicit
-    end
+local ITEM_STATE_FILE = "~add-ons/Battle_for_Wesnoth_AP/ap_items.json"
 
-    local ok, userprofile = pcall(os.getenv, "USERPROFILE")
-    if ok and userprofile and userprofile ~= "" then
-        return userprofile .. "\\Documents\\My Games\\WesnothAP\\bridge_state.json"
+local function get_filesystem()
+    local ok, module = pcall(wesnoth.require, "filesystem")
+    if ok and module then
+        return module
     end
-
-    local userdata = wesnoth.game_config and wesnoth.game_config.user_data_dir
-    if userdata and userdata ~= "" then
-        return userdata .. "/WesnothAP/bridge_state.json"
-    end
-
-    return "bridge_state.json"
+    return nil
 end
 
 local function read_file(path)
-    local ok, handle = pcall(io.open, path, "r")
-    if not ok or not handle then
+    local filesystem = get_filesystem()
+    if not filesystem then
         return nil
     end
-    local contents = handle:read("*a")
-    handle:close()
+
+    local ok, contents = pcall(filesystem.read_file, path)
+    if not ok then
+        return nil
+    end
     return contents
-end
-
-local function write_file(path, contents)
-    local dir = path:match("^(.*)[/\\][^/\\]+$")
-    if dir and dir ~= "" then
-        pcall(function()
-            if package.config:sub(1, 1) == "\\" then
-                os.execute('mkdir "' .. dir .. '" >NUL 2>NUL')
-            else
-                os.execute('mkdir -p "' .. dir .. '" >/dev/null 2>/dev/null')
-            end
-        end)
-    end
-
-    local ok, handle = pcall(io.open, path, "w")
-    if not ok or not handle then
-        wesnoth.message("Archipelago", "Could not write bridge file: " .. path)
-        return false
-    end
-    handle:write(contents)
-    handle:close()
-    return true
 end
 
 local function parse_array(contents, key)
@@ -68,22 +40,6 @@ local function parse_array(contents, key)
     end
 
     return values
-end
-
-local function parse_bool(contents, key)
-    if not contents then
-        return false
-    end
-    return contents:match('"' .. key .. '"%s*:%s*true') ~= nil
-end
-
-local function encode_array(values)
-    local encoded = {}
-    for _, value in ipairs(values) do
-        value = tostring(value):gsub("\\", "\\\\"):gsub('"', '\\"')
-        table.insert(encoded, '"' .. value .. '"')
-    end
-    return "[" .. table.concat(encoded, ", ") .. "]"
 end
 
 local function unique_sorted(values)
@@ -119,39 +75,20 @@ local function write_variable_array(name, field, values)
 end
 
 function bridge.load()
-    local path = get_bridge_path()
-    wesnoth.set_variable("ap_bridge_file", path)
-
-    local contents = read_file(path)
-    local checked = parse_array(contents, "checked_locations")
+    local contents = read_file(ITEM_STATE_FILE)
     local items = parse_array(contents, "received_items")
-
-    write_variable_array("ap_checked_locations", "name", checked)
     write_variable_array("ap_received_items", "name", items)
-    wesnoth.set_variable("ap_goal_complete", parse_bool(contents, "goal_complete") and "yes" or "no")
 end
 
 function bridge.save()
-    local path = get_bridge_path()
-    local checked = unique_sorted(table_from_variable_array("ap_checked_locations", "name"))
-    local items = table_from_variable_array("ap_received_items", "name")
-    local goal = wesnoth.get_variable("ap_goal_complete") == "yes"
-
-    local contents = "{\n"
-        .. '  "checked_locations": ' .. encode_array(checked) .. ",\n"
-        .. '  "received_items": ' .. encode_array(items) .. ",\n"
-        .. '  "goal_complete": ' .. tostring(goal) .. "\n"
-        .. "}\n"
-
-    write_file(path, contents)
+    -- Wesnoth add-ons do not have general-purpose write access from Lua.
+    -- The Python client reads checks from autosaves instead.
 end
 
 function bridge.mark_location(name)
-    bridge.load()
     local checked = table_from_variable_array("ap_checked_locations", "name")
     table.insert(checked, name)
     write_variable_array("ap_checked_locations", "name", unique_sorted(checked))
-    bridge.save()
 end
 
 function bridge.has_item(name)

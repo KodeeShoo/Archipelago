@@ -18,8 +18,14 @@
 python -m worlds.wesnoth.client.wesnoth_client --connect SERVER:PORT
 ```
 
+If the client cannot find your Wesnoth user data folder, pass it explicitly:
+
+```powershell
+python -m worlds.wesnoth.client.wesnoth_client --connect SERVER:PORT --wesnoth-userdir "C:\Users\you\Documents\My Games\Wesnoth1.18"
+```
+
 5. Start the Wesnoth campaign.
-6. Complete campaign milestones to send checks.
+6. Complete campaign milestones, then end the turn or save so the client can read the updated autosave.
 7. Defeat the prototype enemy leader to complete the slot.
 
 The first smoke test uses `Tutorial: First Village`, `Tutorial: First Level Up`, and `Tutorial: Enemy Leader Defeated`.
