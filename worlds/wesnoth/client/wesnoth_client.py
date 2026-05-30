@@ -198,6 +198,7 @@ class WesnothContext(CommonContext):
         self.slot_data: dict[str, Any] = {}
         self.highest_processed_item_index = 0
         self.sync_requested = False
+        self.logged_checks_seen: set[str] = set()
 
     async def server_auth(self, password_requested: bool = False) -> None:
         if password_requested and not self.password:
@@ -254,6 +255,11 @@ async def game_watcher(ctx: WesnothContext) -> None:
             current_state = ctx.build_bridge_state(bridge_state)
             write_bridge_state(current_state, ctx.bridge_path)
 
+            newly_seen_names = bridge_state.checked_locations - ctx.logged_checks_seen
+            if newly_seen_names:
+                ctx.logged_checks_seen |= newly_seen_names
+                logger.info("Saw Wesnoth checks in save: %s", ", ".join(sorted(newly_seen_names)))
+
             ids_to_send = {
                 LOCATION_NAME_TO_ID[name]
                 for name in bridge_state.checked_locations
@@ -274,11 +280,14 @@ async def game_watcher(ctx: WesnothContext) -> None:
                 logger.info("Sent Wesnoth goal completion.")
 
             if ctx.sync_requested or len(ctx.items_received) != ctx.highest_processed_item_index:
+                new_items = ctx.build_bridge_state(bridge_state).received_items[ctx.highest_processed_item_index:]
                 ctx.highest_processed_item_index = len(ctx.items_received)
                 ctx.sync_requested = False
                 current_state = ctx.build_bridge_state(bridge_state)
                 write_bridge_state(current_state, ctx.bridge_path)
                 write_item_state(current_state.received_items, ctx.addon_dir)
+                if new_items:
+                    logger.info("Wrote received Wesnoth items: %s", ", ".join(new_items))
         except Exception as exc:
             logger.exception("Error while syncing Wesnoth bridge: %s", exc)
 
