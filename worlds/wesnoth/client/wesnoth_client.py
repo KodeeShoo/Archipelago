@@ -185,11 +185,38 @@ def parse_goal_complete(save_text: str) -> bool:
 
 def parse_replay_goal_complete(replay_text: str) -> bool:
     upload_log_match = re.search(r"\[upload_log\]([\s\S]*?)\[/upload_log\]", replay_text)
-    if not upload_log_match:
+    if upload_log_match:
+        upload_log_text = upload_log_match.group(1)
+        if re.search(r"(?m)^\s*end_units2=0\s*$", upload_log_text):
+            return True
+
+    replay_start_match = re.search(r"\[replay_start\]([\s\S]*?)\[/replay_start\]", replay_text)
+    if not replay_start_match:
         return False
 
-    upload_log_text = upload_log_match.group(1)
-    return re.search(r"(?m)^\s*end_units2=0\s*$", upload_log_text) is not None
+    leader_unit_block = None
+    for unit_match in re.finditer(r"\[unit\]([\s\S]*?)\[/unit\]", replay_start_match.group(1)):
+        if 'id="RaidLeader"' in unit_match.group(1):
+            leader_unit_block = unit_match.group(1)
+            break
+    if not leader_unit_block:
+        return False
+
+    leader_x_match = re.search(r"(?m)^\s*x=(\d+)\s*$", leader_unit_block)
+    leader_y_match = re.search(r"(?m)^\s*y=(\d+)\s*$", leader_unit_block)
+    if not leader_x_match or not leader_y_match:
+        return False
+
+    leader_x, leader_y = leader_x_match.group(1), leader_y_match.group(1)
+    for command_match in re.finditer(r"\[command\]([\s\S]*?)\[/command\]", replay_text):
+        command = command_match.group(1)
+        if "from_side=1" not in command or "[attack]" not in command or "dies=yes" not in command:
+            continue
+        destination_match = re.search(r"\[destination\]\s*x=(\d+)\s*y=(\d+)\s*\[/destination\]", command)
+        if destination_match and destination_match.groups() == (leader_x, leader_y):
+            return True
+
+    return False
 
 
 def parse_save_seed_name(save_text: str) -> str | None:
@@ -210,7 +237,7 @@ def parse_save_bridge_state(save_text: str) -> BridgeState:
     return BridgeState(checked_locations=checked, goal_complete=goal_complete)
 
 
-def read_latest_matching_save(userdir: Path | None, seed_name: str | None, replay: bool) -> str | None:
+def read_latest_matching_save(userdir: Path | None, seed_name: str | None, replay: bool) -> tuple[Path, str] | None:
     candidates = [
         path
         for path in wesnoth_ap_save_candidates(userdir)
@@ -219,7 +246,7 @@ def read_latest_matching_save(userdir: Path | None, seed_name: str | None, repla
     for path in sorted(candidates, key=lambda candidate: candidate.stat().st_mtime, reverse=True):
         save_text = read_save_text(path)
         if save_matches_seed(save_text, seed_name):
-            return save_text
+            return path, save_text
     return None
 
 
@@ -227,14 +254,15 @@ def read_save_bridge_state(userdir: Path | None, seed_name: str | None = None) -
     if not seed_name:
         return BridgeState()
 
-    latest_save_text = read_latest_matching_save(userdir, seed_name, replay=False)
+    latest_save = read_latest_matching_save(userdir, seed_name, replay=False)
     bridge_state = BridgeState()
-    if latest_save_text:
+    if latest_save:
+        latest_save_path, latest_save_text = latest_save
         bridge_state = parse_save_bridge_state(latest_save_text)
 
-    latest_replay_text = read_latest_matching_save(userdir, seed_name, replay=True)
-    if latest_replay_text:
-        bridge_state.goal_complete = bridge_state.goal_complete or parse_replay_goal_complete(latest_replay_text)
+        newest_replay = latest_wesnoth_ap_replay(userdir)
+        if newest_replay and newest_replay.stat().st_mtime >= latest_save_path.stat().st_mtime:
+            bridge_state.goal_complete = bridge_state.goal_complete or parse_replay_goal_complete(read_save_text(newest_replay))
 
     return bridge_state
 
