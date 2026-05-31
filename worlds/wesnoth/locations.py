@@ -14,7 +14,7 @@ BASE_ID = 875_000
 LOCATION_NAME_TO_ID: dict[str, int] = {
     "Tutorial: First Village": BASE_ID + 1,
     "Tutorial: First Level Up": BASE_ID + 2,
-    "Tutorial: Enemy Leader Defeated": BASE_ID + 3,
+    "Tutorial: Training Chest": BASE_ID + 3,
 }
 
 
@@ -22,7 +22,7 @@ LOCATION_GROUPS = {
     "Tutorial": {
         "Tutorial: First Village",
         "Tutorial: First Level Up",
-        "Tutorial: Enemy Leader Defeated",
+        "Tutorial: Training Chest",
     },
 }
 
@@ -31,7 +31,7 @@ REGION_LOCATIONS = {
     "Campaign Start": [
         "Tutorial: First Village",
         "Tutorial: First Level Up",
-        "Tutorial: Enemy Leader Defeated",
+        "Tutorial: Training Chest",
     ],
 }
 

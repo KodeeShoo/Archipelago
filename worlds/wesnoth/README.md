@@ -53,13 +53,13 @@ The current playable test is intentionally tiny:
 - Checks:
   - `Tutorial: First Village`
   - `Tutorial: First Level Up`
-  - `Tutorial: Enemy Leader Defeated`
+  - `Tutorial: Training Chest`
 - Items:
   - `Recruit: Bowman`
   - `Recruit: Mage`
   - `Extra Gold`
 
-`Recruit: Bowman` lets the prototype campaign recruit Bowmen. `Recruit: Mage` lets it recruit Mages. `Extra Gold` gives side 1 a one-time 50 gold bonus.
+`Recruit: Bowman` lets the prototype campaign recruit Bowmen. `Recruit: Mage` lets it recruit Mages. `Extra Gold` gives side 1 a one-time 50 gold bonus. Defeating the enemy leader completes the slot.
 
 ## Running the Smoke Test
 
