@@ -179,12 +179,8 @@ def latest_wesnoth_ap_replay(userdir: Path | None) -> Path | None:
 
 
 def parse_goal_complete(save_text: str) -> bool:
-    variables_match = re.search(r"\[variables\]([\s\S]*?)\[/variables\]", save_text)
-    if not variables_match:
-        return re.search(r'\bap_goal_complete="?yes"?', save_text) is not None
-
-    variables_text = variables_match.group(1)
-    return re.search(r'(?m)^\s*ap_goal_complete="?yes"?\s*$', variables_text) is not None
+    matches = re.findall(r'(?m)^\s*ap_goal_complete=("?yes"?|"?no"?)\s*$', save_text)
+    return bool(matches) and matches[-1].strip('"') == "yes"
 
 
 def parse_replay_goal_complete(replay_text: str) -> bool:
@@ -197,11 +193,7 @@ def parse_replay_goal_complete(replay_text: str) -> bool:
 
 
 def parse_save_seed_name(save_text: str) -> str | None:
-    variables_match = re.search(r"\[variables\]([\s\S]*?)\[/variables\]", save_text)
-    if not variables_match:
-        return None
-
-    seed_match = re.search(r'(?m)^\s*ap_seed_name="([^"]+)"\s*$', variables_match.group(1))
+    seed_match = re.search(r'(?m)^\s*ap_seed_name="([^"]+)"\s*$', save_text)
     return seed_match.group(1) if seed_match else None
 
 
