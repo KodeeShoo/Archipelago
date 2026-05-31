@@ -141,23 +141,56 @@ def read_save_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
-def latest_wesnoth_ap_save(userdir: Path | None) -> Path | None:
+def is_replay_save(path: Path) -> bool:
+    return "replay" in path.name.lower()
+
+
+def wesnoth_ap_save_candidates(userdir: Path | None) -> list[Path]:
     if not userdir:
-        return None
+        return []
     saves_dir = userdir / "saves"
     if not saves_dir.exists():
-        return None
+        return []
 
-    saves = [
+    return [
         path
         for path in saves_dir.iterdir()
         if path.is_file()
         and path.name.startswith("Wesnoth AP-")
         and (path.suffix.lower() == ".gz" or path.suffix == "")
     ]
+
+
+def latest_wesnoth_ap_save(userdir: Path | None) -> Path | None:
+    saves = [path for path in wesnoth_ap_save_candidates(userdir) if not is_replay_save(path)]
     if not saves:
         return None
     return max(saves, key=lambda path: path.stat().st_mtime)
+
+
+def latest_wesnoth_ap_replay(userdir: Path | None) -> Path | None:
+    replays = [path for path in wesnoth_ap_save_candidates(userdir) if is_replay_save(path)]
+    if not replays:
+        return None
+    return max(replays, key=lambda path: path.stat().st_mtime)
+
+
+def parse_goal_complete(save_text: str) -> bool:
+    variables_match = re.search(r"\[variables\]([\s\S]*?)\[/variables\]", save_text)
+    if not variables_match:
+        return re.search(r'\bap_goal_complete="?yes"?', save_text) is not None
+
+    variables_text = variables_match.group(1)
+    return re.search(r'(?m)^\s*ap_goal_complete="?yes"?\s*$', variables_text) is not None
+
+
+def parse_replay_goal_complete(replay_text: str) -> bool:
+    upload_log_match = re.search(r"\[upload_log\]([\s\S]*?)\[/upload_log\]", replay_text)
+    if not upload_log_match:
+        return False
+
+    upload_log_text = upload_log_match.group(1)
+    return re.search(r"(?m)^\s*end_units2=0\s*$", upload_log_text) is not None
 
 
 def parse_save_bridge_state(save_text: str) -> BridgeState:
@@ -165,15 +198,21 @@ def parse_save_bridge_state(save_text: str) -> BridgeState:
         match.group(1)
         for match in re.finditer(r'\[ap_checked_locations\][\s\S]*?name="([^"]+)"[\s\S]*?\[/ap_checked_locations\]', save_text)
     }
-    goal_complete = re.search(r'\bap_goal_complete="?yes"?', save_text) is not None
+    goal_complete = parse_goal_complete(save_text)
     return BridgeState(checked_locations=checked, goal_complete=goal_complete)
 
 
 def read_save_bridge_state(userdir: Path | None) -> BridgeState:
     latest_save = latest_wesnoth_ap_save(userdir)
-    if not latest_save:
-        return BridgeState()
-    return parse_save_bridge_state(read_save_text(latest_save))
+    bridge_state = BridgeState()
+    if latest_save:
+        bridge_state = parse_save_bridge_state(read_save_text(latest_save))
+
+    latest_replay = latest_wesnoth_ap_replay(userdir)
+    if latest_replay and (not latest_save or latest_replay.stat().st_mtime >= latest_save.stat().st_mtime):
+        bridge_state.goal_complete = bridge_state.goal_complete or parse_replay_goal_complete(read_save_text(latest_replay))
+
+    return bridge_state
 
 
 class WesnothCommandProcessor(ClientCommandProcessor):
