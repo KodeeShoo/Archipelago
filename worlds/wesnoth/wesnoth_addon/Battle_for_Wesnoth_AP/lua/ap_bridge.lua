@@ -47,6 +47,19 @@ local function parse_array(contents, key)
     return values
 end
 
+local function parse_string(contents, key)
+    if not contents then
+        return nil
+    end
+
+    local value = contents:match('"' .. key .. '"%s*:%s*"(.-)"')
+    if not value then
+        return nil
+    end
+
+    return value:gsub('\\"', '"'):gsub("\\\\", "\\")
+end
+
 local function unique_sorted(values)
     local seen = {}
     local result = {}
@@ -82,7 +95,11 @@ end
 function bridge.load()
     local contents = read_file(ITEM_STATE_FILE)
     local items = parse_array(contents, "received_items")
+    local seed_name = parse_string(contents, "seed_name")
     write_variable_array("ap_received_items", "name", items)
+    if seed_name and seed_name ~= "" then
+        wesnoth.set_variable("ap_seed_name", seed_name)
+    end
 end
 
 function bridge.save()
@@ -91,6 +108,7 @@ function bridge.save()
 end
 
 function bridge.mark_location(name)
+    bridge.load()
     local checked = table_from_variable_array("ap_checked_locations", "name")
     table.insert(checked, name)
     write_variable_array("ap_checked_locations", "name", unique_sorted(checked))

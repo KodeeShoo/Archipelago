@@ -6,7 +6,6 @@ import gzip
 import json
 import os
 import re
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -119,10 +118,13 @@ def find_addon_dir(userdir: Path | None) -> Path | None:
     return addon_dir if addon_dir.exists() else None
 
 
-def write_item_state(received_items: list[str], addon_dir: Path | None) -> None:
+def write_item_state(received_items: list[str], addon_dir: Path | None, seed_name: str | None = None) -> None:
     if not addon_dir:
         return
-    payload = {"received_items": received_items}
+    payload = {
+        "received_items": received_items,
+        "seed_name": seed_name or "",
+    }
     path = addon_dir / ITEM_STATE_FILENAME
     temp_path = path.with_suffix(path.suffix + ".tmp")
     temp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -146,7 +148,7 @@ def is_replay_save(path: Path) -> bool:
     return "replay" in path.name.lower()
 
 
-def wesnoth_ap_save_candidates(userdir: Path | None, modified_after: float | None = None) -> list[Path]:
+def wesnoth_ap_save_candidates(userdir: Path | None) -> list[Path]:
     if not userdir:
         return []
     saves_dir = userdir / "saves"
@@ -159,19 +161,18 @@ def wesnoth_ap_save_candidates(userdir: Path | None, modified_after: float | Non
         if path.is_file()
         and path.name.startswith("Wesnoth AP-")
         and (path.suffix.lower() == ".gz" or path.suffix == "")
-        and (modified_after is None or path.stat().st_mtime >= modified_after)
     ]
 
 
-def latest_wesnoth_ap_save(userdir: Path | None, modified_after: float | None = None) -> Path | None:
-    saves = [path for path in wesnoth_ap_save_candidates(userdir, modified_after) if not is_replay_save(path)]
+def latest_wesnoth_ap_save(userdir: Path | None) -> Path | None:
+    saves = [path for path in wesnoth_ap_save_candidates(userdir) if not is_replay_save(path)]
     if not saves:
         return None
     return max(saves, key=lambda path: path.stat().st_mtime)
 
 
-def latest_wesnoth_ap_replay(userdir: Path | None, modified_after: float | None = None) -> Path | None:
-    replays = [path for path in wesnoth_ap_save_candidates(userdir, modified_after) if is_replay_save(path)]
+def latest_wesnoth_ap_replay(userdir: Path | None) -> Path | None:
+    replays = [path for path in wesnoth_ap_save_candidates(userdir) if is_replay_save(path)]
     if not replays:
         return None
     return max(replays, key=lambda path: path.stat().st_mtime)
@@ -195,6 +196,19 @@ def parse_replay_goal_complete(replay_text: str) -> bool:
     return re.search(r"(?m)^\s*end_units2=0\s*$", upload_log_text) is not None
 
 
+def parse_save_seed_name(save_text: str) -> str | None:
+    variables_match = re.search(r"\[variables\]([\s\S]*?)\[/variables\]", save_text)
+    if not variables_match:
+        return None
+
+    seed_match = re.search(r'(?m)^\s*ap_seed_name="([^"]+)"\s*$', variables_match.group(1))
+    return seed_match.group(1) if seed_match else None
+
+
+def save_matches_seed(save_text: str, seed_name: str | None) -> bool:
+    return bool(seed_name) and parse_save_seed_name(save_text) == seed_name
+
+
 def parse_save_bridge_state(save_text: str) -> BridgeState:
     checked = {
         match.group(1)
@@ -204,15 +218,31 @@ def parse_save_bridge_state(save_text: str) -> BridgeState:
     return BridgeState(checked_locations=checked, goal_complete=goal_complete)
 
 
-def read_save_bridge_state(userdir: Path | None, modified_after: float | None = None) -> BridgeState:
-    latest_save = latest_wesnoth_ap_save(userdir, modified_after)
-    bridge_state = BridgeState()
-    if latest_save:
-        bridge_state = parse_save_bridge_state(read_save_text(latest_save))
+def read_latest_matching_save(userdir: Path | None, seed_name: str | None, replay: bool) -> str | None:
+    candidates = [
+        path
+        for path in wesnoth_ap_save_candidates(userdir)
+        if is_replay_save(path) == replay
+    ]
+    for path in sorted(candidates, key=lambda candidate: candidate.stat().st_mtime, reverse=True):
+        save_text = read_save_text(path)
+        if save_matches_seed(save_text, seed_name):
+            return save_text
+    return None
 
-    latest_replay = latest_wesnoth_ap_replay(userdir, modified_after)
-    if latest_replay and (not latest_save or latest_replay.stat().st_mtime >= latest_save.stat().st_mtime):
-        bridge_state.goal_complete = bridge_state.goal_complete or parse_replay_goal_complete(read_save_text(latest_replay))
+
+def read_save_bridge_state(userdir: Path | None, seed_name: str | None = None) -> BridgeState:
+    if not seed_name:
+        return BridgeState()
+
+    latest_save_text = read_latest_matching_save(userdir, seed_name, replay=False)
+    bridge_state = BridgeState()
+    if latest_save_text:
+        bridge_state = parse_save_bridge_state(latest_save_text)
+
+    latest_replay_text = read_latest_matching_save(userdir, seed_name, replay=True)
+    if latest_replay_text:
+        bridge_state.goal_complete = bridge_state.goal_complete or parse_replay_goal_complete(latest_replay_text)
 
     return bridge_state
 
@@ -247,8 +277,8 @@ class WesnothContext(CommonContext):
         self.sync_requested = False
         self.logged_checks_seen: set[str] = set()
         self.pending_locations: set[int] = set()
-        self.last_written_items: list[str] | None = None
-        self.save_watch_started_at = time.time()
+        self.last_written_item_state: tuple[list[str], str | None] | None = None
+        self.wesnoth_seed_name: str | None = None
 
     async def server_auth(self, password_requested: bool = False) -> None:
         if password_requested and not self.password:
@@ -257,7 +287,10 @@ class WesnothContext(CommonContext):
         await self.send_connect(game=self.game)
 
     def on_package(self, cmd: str, args: dict[str, Any]) -> None:
-        if cmd == "Connected":
+        if cmd == "RoomInfo":
+            self.wesnoth_seed_name = str(args.get("seed_name") or "")
+            self.sync_requested = True
+        elif cmd == "Connected":
             self.slot_data = dict(args.get("slot_data", {}))
             self.sync_requested = True
         elif cmd in {"ReceivedItems", "RoomUpdate"}:
@@ -292,11 +325,12 @@ class WesnothContext(CommonContext):
     def write_current_state(self, bridge_state: BridgeState) -> None:
         current_state = self.build_bridge_state(bridge_state)
         write_bridge_state(current_state, self.bridge_path)
-        if current_state.received_items != self.last_written_items:
-            write_item_state(current_state.received_items, self.addon_dir)
-            previous_count = len(self.last_written_items or [])
+        item_state = (current_state.received_items, self.wesnoth_seed_name)
+        if item_state != self.last_written_item_state:
+            write_item_state(current_state.received_items, self.addon_dir, self.wesnoth_seed_name)
+            previous_count = len(self.last_written_item_state[0] if self.last_written_item_state else [])
             new_items = current_state.received_items[previous_count:]
-            self.last_written_items = list(current_state.received_items)
+            self.last_written_item_state = (list(current_state.received_items), self.wesnoth_seed_name)
             if new_items:
                 logger.info("Wrote received Wesnoth items: %s", ", ".join(new_items))
 
@@ -308,7 +342,7 @@ async def game_watcher(ctx: WesnothContext) -> None:
     logger.info("Writing Wesnoth client status file at %s", ctx.bridge_path)
     if ctx.wesnoth_userdir:
         logger.info("Watching Wesnoth saves under %s", ctx.wesnoth_userdir / "saves")
-        logger.info("Ignoring Wesnoth saves from before this client session.")
+        logger.info("Ignoring Wesnoth saves that do not match the connected AP seed.")
     if ctx.addon_dir:
         logger.info("Writing received items for Wesnoth at %s", ctx.addon_dir / ITEM_STATE_FILENAME)
     else:
@@ -316,7 +350,7 @@ async def game_watcher(ctx: WesnothContext) -> None:
 
     while not ctx.exit_event.is_set():
         try:
-            bridge_state = read_save_bridge_state(ctx.wesnoth_userdir, ctx.save_watch_started_at)
+            bridge_state = read_save_bridge_state(ctx.wesnoth_userdir, ctx.wesnoth_seed_name)
             ctx.write_current_state(bridge_state)
 
             newly_seen_names = bridge_state.checked_locations - ctx.logged_checks_seen
