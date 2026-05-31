@@ -6,6 +6,7 @@ import gzip
 import json
 import os
 import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -145,7 +146,7 @@ def is_replay_save(path: Path) -> bool:
     return "replay" in path.name.lower()
 
 
-def wesnoth_ap_save_candidates(userdir: Path | None) -> list[Path]:
+def wesnoth_ap_save_candidates(userdir: Path | None, modified_after: float | None = None) -> list[Path]:
     if not userdir:
         return []
     saves_dir = userdir / "saves"
@@ -158,18 +159,19 @@ def wesnoth_ap_save_candidates(userdir: Path | None) -> list[Path]:
         if path.is_file()
         and path.name.startswith("Wesnoth AP-")
         and (path.suffix.lower() == ".gz" or path.suffix == "")
+        and (modified_after is None or path.stat().st_mtime >= modified_after)
     ]
 
 
-def latest_wesnoth_ap_save(userdir: Path | None) -> Path | None:
-    saves = [path for path in wesnoth_ap_save_candidates(userdir) if not is_replay_save(path)]
+def latest_wesnoth_ap_save(userdir: Path | None, modified_after: float | None = None) -> Path | None:
+    saves = [path for path in wesnoth_ap_save_candidates(userdir, modified_after) if not is_replay_save(path)]
     if not saves:
         return None
     return max(saves, key=lambda path: path.stat().st_mtime)
 
 
-def latest_wesnoth_ap_replay(userdir: Path | None) -> Path | None:
-    replays = [path for path in wesnoth_ap_save_candidates(userdir) if is_replay_save(path)]
+def latest_wesnoth_ap_replay(userdir: Path | None, modified_after: float | None = None) -> Path | None:
+    replays = [path for path in wesnoth_ap_save_candidates(userdir, modified_after) if is_replay_save(path)]
     if not replays:
         return None
     return max(replays, key=lambda path: path.stat().st_mtime)
@@ -202,13 +204,13 @@ def parse_save_bridge_state(save_text: str) -> BridgeState:
     return BridgeState(checked_locations=checked, goal_complete=goal_complete)
 
 
-def read_save_bridge_state(userdir: Path | None) -> BridgeState:
-    latest_save = latest_wesnoth_ap_save(userdir)
+def read_save_bridge_state(userdir: Path | None, modified_after: float | None = None) -> BridgeState:
+    latest_save = latest_wesnoth_ap_save(userdir, modified_after)
     bridge_state = BridgeState()
     if latest_save:
         bridge_state = parse_save_bridge_state(read_save_text(latest_save))
 
-    latest_replay = latest_wesnoth_ap_replay(userdir)
+    latest_replay = latest_wesnoth_ap_replay(userdir, modified_after)
     if latest_replay and (not latest_save or latest_replay.stat().st_mtime >= latest_save.stat().st_mtime):
         bridge_state.goal_complete = bridge_state.goal_complete or parse_replay_goal_complete(read_save_text(latest_replay))
 
@@ -246,6 +248,7 @@ class WesnothContext(CommonContext):
         self.logged_checks_seen: set[str] = set()
         self.pending_locations: set[int] = set()
         self.last_written_items: list[str] | None = None
+        self.save_watch_started_at = time.time()
 
     async def server_auth(self, password_requested: bool = False) -> None:
         if password_requested and not self.password:
@@ -301,11 +304,11 @@ class WesnothContext(CommonContext):
 async def game_watcher(ctx: WesnothContext) -> None:
     clear_item_state(ctx.addon_dir)
     logger.info("Cleared stale Wesnoth received items.")
-    write_bridge_state(ctx.build_bridge_state(read_bridge_state(ctx.bridge_path)), ctx.bridge_path)
-    ctx.write_current_state(read_bridge_state(ctx.bridge_path))
+    ctx.write_current_state(BridgeState())
     logger.info("Writing Wesnoth client status file at %s", ctx.bridge_path)
     if ctx.wesnoth_userdir:
         logger.info("Watching Wesnoth saves under %s", ctx.wesnoth_userdir / "saves")
+        logger.info("Ignoring Wesnoth saves from before this client session.")
     if ctx.addon_dir:
         logger.info("Writing received items for Wesnoth at %s", ctx.addon_dir / ITEM_STATE_FILENAME)
     else:
@@ -313,7 +316,7 @@ async def game_watcher(ctx: WesnothContext) -> None:
 
     while not ctx.exit_event.is_set():
         try:
-            bridge_state = read_save_bridge_state(ctx.wesnoth_userdir)
+            bridge_state = read_save_bridge_state(ctx.wesnoth_userdir, ctx.save_watch_started_at)
             ctx.write_current_state(bridge_state)
 
             newly_seen_names = bridge_state.checked_locations - ctx.logged_checks_seen
