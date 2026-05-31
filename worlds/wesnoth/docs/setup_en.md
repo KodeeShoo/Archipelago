@@ -26,6 +26,6 @@ python -m worlds.wesnoth.client.wesnoth_client --connect SERVER:PORT --wesnoth-u
 
 5. Start the Wesnoth campaign.
 6. Complete campaign milestones, then end the turn or save so the client can read the updated autosave.
-7. Open the training chest for the final smoke-test check, then defeat the prototype enemy leader to complete the slot.
+7. Open the training and armory chests for smoke-test checks, then defeat the prototype enemy leader to complete the slot.
 
-The first smoke test uses `Tutorial: First Village`, `Tutorial: First Level Up`, and `Tutorial: Training Chest`.
+The first smoke test uses `Tutorial: First Village`, `Tutorial: First Level Up`, `Tutorial: Training Chest`, and `Tutorial: Armory Chest`.

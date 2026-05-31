@@ -54,12 +54,14 @@ The current playable test is intentionally tiny:
   - `Tutorial: First Village`
   - `Tutorial: First Level Up`
   - `Tutorial: Training Chest`
+  - `Tutorial: Armory Chest`
 - Items:
   - `Recruit: Bowman`
   - `Recruit: Mage`
   - `Extra Gold`
+  - `Attack: Javelin`
 
-`Recruit: Bowman` lets the prototype campaign recruit Bowmen. `Recruit: Mage` lets it recruit Mages. `Extra Gold` gives side 1 a one-time 50 gold bonus. Defeating the enemy leader completes the slot.
+`Recruit: Bowman` lets the prototype campaign recruit Bowmen. `Recruit: Mage` lets it recruit Mages. `Extra Gold` gives side 1 a one-time 50 gold bonus. `Attack: Javelin` restores the ranged javelin attack to side 1 Spearmen. Defeating the enemy leader completes the slot.
 
 ## Running the Smoke Test
 

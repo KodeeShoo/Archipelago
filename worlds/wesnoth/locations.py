@@ -15,6 +15,7 @@ LOCATION_NAME_TO_ID: dict[str, int] = {
     "Tutorial: First Village": BASE_ID + 1,
     "Tutorial: First Level Up": BASE_ID + 2,
     "Tutorial: Training Chest": BASE_ID + 3,
+    "Tutorial: Armory Chest": BASE_ID + 4,
 }
 
 
@@ -23,6 +24,7 @@ LOCATION_GROUPS = {
         "Tutorial: First Village",
         "Tutorial: First Level Up",
         "Tutorial: Training Chest",
+        "Tutorial: Armory Chest",
     },
 }
 
@@ -32,6 +34,7 @@ REGION_LOCATIONS = {
         "Tutorial: First Village",
         "Tutorial: First Level Up",
         "Tutorial: Training Chest",
+        "Tutorial: Armory Chest",
     ],
 }
 

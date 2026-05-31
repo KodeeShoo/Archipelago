@@ -15,6 +15,7 @@ ITEM_NAME_TO_ID: dict[str, int] = {
     "Recruit: Bowman": BASE_ID + 1,
     "Recruit: Mage": BASE_ID + 2,
     "Extra Gold": BASE_ID + 3,
+    "Attack: Javelin": BASE_ID + 4,
 }
 
 
@@ -22,11 +23,12 @@ DEFAULT_CLASSIFICATION: dict[str, ItemClassification] = {
     "Recruit: Bowman": ItemClassification.progression,
     "Recruit: Mage": ItemClassification.progression,
     "Extra Gold": ItemClassification.useful,
+    "Attack: Javelin": ItemClassification.useful,
 }
 
 
 PROGRESSION_ITEMS = ["Recruit: Bowman", "Recruit: Mage"]
-USEFUL_ITEMS = ["Extra Gold"]
+USEFUL_ITEMS = ["Extra Gold", "Attack: Javelin"]
 FILLER_ITEMS = ["Extra Gold"]
 
 

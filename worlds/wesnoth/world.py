@@ -22,6 +22,7 @@ class WesnothWorld(World):
             "Recruit: Bowman",
             "Recruit: Mage",
         },
+        "Attack Unlocks": {"Attack: Javelin"},
         "Support": {"Extra Gold"},
     }
 
