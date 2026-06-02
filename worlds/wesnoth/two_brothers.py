@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 
 ROSTER_SIZE = 8
-CHEST_LOCATION_COUNT = 60
+CHESTS_PER_SCENARIO = 15
 FILLER_ITEM_NAME = "AP Supply Cache"
 
 SCENARIO_COMPLETION_LOCATIONS = [
@@ -20,17 +20,27 @@ SCENARIO_COMPLETION_LOCATIONS = [
 
 FINAL_SCENARIO_ID = "04_Return_to_the_Village"
 
-CHEST_LOCATION_NAMES = [
-    f"Two Brothers: Chest {index:02d}"
-    for index in range(1, CHEST_LOCATION_COUNT + 1)
-]
-
 SCENARIO_MAPS = {
     "01_Rooting_Out_a_Mage": "01_Rooting_Out_a_Mage.map",
     "02_The_Chase": "02_The_Chase.map",
     "03_Guarded_Castle": "03_Guarded_Castle.map",
     "04_Return_to_the_Village": "04_Return_to_the_Village.map",
 }
+
+SCENARIO_DISPLAY_NAMES = {
+    "01_Rooting_Out_a_Mage": "Rooting Out a Mage",
+    "02_The_Chase": "The Chase",
+    "03_Guarded_Castle": "Guarded Castle",
+    "04_Return_to_the_Village": "Return to the Village",
+}
+
+SCENARIO_IDS = tuple(SCENARIO_MAPS)
+
+CHEST_LOCATION_NAMES = [
+    f"Two Brothers: {SCENARIO_DISPLAY_NAMES[scenario_id]} Chest {index:02d}"
+    for scenario_id in SCENARIO_IDS
+    for index in range(1, CHESTS_PER_SCENARIO + 1)
+]
 
 
 @dataclass(frozen=True)
@@ -141,8 +151,9 @@ def generate_two_brothers_slot(world: WesnothWorld) -> None:
     if chest_count < 0:
         raise ValueError("Two Brothers item pool is smaller than its fixed scenario checks.")
 
-    active_locations = [*SCENARIO_COMPLETION_LOCATIONS, *CHEST_LOCATION_NAMES[:chest_count]]
-    chests = generate_chests(world, CHEST_LOCATION_NAMES[:chest_count])
+    active_chests = active_chest_locations(chest_count)
+    active_locations = [*SCENARIO_COMPLETION_LOCATIONS, *[chest["name"] for chest in active_chests]]
+    chests = generate_chests(world, active_chests)
 
     world.roster_units = [unit.unit_type for unit in roster]
     world.starting_unit = starting_unit.unit_type
@@ -153,19 +164,34 @@ def generate_two_brothers_slot(world: WesnothWorld) -> None:
     world.two_brothers_chests = chests
 
 
-def generate_chests(world: WesnothWorld, chest_names: list[str]) -> list[dict[str, object]]:
-    candidates = []
-    for scenario_id, map_name in SCENARIO_MAPS.items():
-        for x, y in walkable_land_positions(map_name):
-            candidates.append((scenario_id, x, y))
-    if len(chest_names) > len(candidates):
-        raise ValueError("Not enough walkable Two Brothers map positions for generated chests.")
+def active_chest_locations(chest_count: int) -> list[dict[str, object]]:
+    chests = []
+    scenario_counts = {scenario_id: 0 for scenario_id in SCENARIO_IDS}
+    for index in range(chest_count):
+        scenario_id = SCENARIO_IDS[index % len(SCENARIO_IDS)]
+        scenario_counts[scenario_id] += 1
+        chests.append({
+            "name": f"Two Brothers: {SCENARIO_DISPLAY_NAMES[scenario_id]} Chest {scenario_counts[scenario_id]:02d}",
+            "scenario": scenario_id,
+        })
+    return chests
 
-    chosen = world.random.sample(candidates, len(chest_names))
-    return [
-        {"name": name, "scenario": scenario, "x": x, "y": y}
-        for name, (scenario, x, y) in zip(chest_names, chosen)
-    ]
+
+def generate_chests(world: WesnothWorld, chest_specs: list[dict[str, object]]) -> list[dict[str, object]]:
+    chests = []
+    specs_by_scenario: dict[str, list[dict[str, object]]] = {scenario_id: [] for scenario_id in SCENARIO_IDS}
+    for chest in chest_specs:
+        specs_by_scenario[str(chest["scenario"])].append(chest)
+
+    for scenario_id, specs in specs_by_scenario.items():
+        candidates = walkable_land_positions(SCENARIO_MAPS[scenario_id])
+        if len(specs) > len(candidates):
+            raise ValueError(f"Not enough walkable Two Brothers map positions for {scenario_id}.")
+
+        chosen = world.random.sample(candidates, len(specs))
+        for chest, (x, y) in zip(specs, chosen):
+            chests.append({"name": chest["name"], "scenario": scenario_id, "x": x, "y": y})
+    return chests
 
 
 def walkable_land_positions(map_name: str) -> list[tuple[int, int]]:
