@@ -210,9 +210,17 @@ def walkable_land_positions(map_name: str) -> list[tuple[int, int]]:
         terrains = line.split(",")
         for x, terrain in enumerate(terrains[1:-1], start=1):
             base = terrain.strip().split()[0]
-            if is_walkable_land(base):
+            if is_walkable_land(base) and is_allowed_chest_position(map_name, x, y, base):
                 positions.append((x, y))
     return positions
+
+
+def is_allowed_chest_position(map_name: str, x: int, y: int, terrain: str) -> bool:
+    if map_name == "03_Guarded_Castle.map" and terrain.startswith("U"):
+        return False
+    if map_name == "03_Guarded_Castle.map" and x <= 8 and y <= 14:
+        return False
+    return True
 
 
 def is_walkable_land(terrain: str) -> bool:

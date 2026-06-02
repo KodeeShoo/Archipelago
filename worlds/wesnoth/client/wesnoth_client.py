@@ -152,6 +152,8 @@ def repaired_chest_position(scenario_id: str, x: int, y: int) -> tuple[int, int]
         return x, y
     if (x - 1, y - 1) in walkable:
         return x - 1, y - 1
+    if walkable:
+        return min(walkable, key=lambda position: (abs(position[0] - x) + abs(position[1] - y), position[1], position[0]))
     return x, y
 
 
