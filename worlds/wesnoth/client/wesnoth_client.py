@@ -380,7 +380,7 @@ class WesnothContext(CommonContext):
 
     def location_reward_strings(self) -> list[str]:
         rewards = []
-        for location_name, location_id in LOCATION_NAME_TO_ID.items():
+        for location_name, location_id in self.active_location_ids().items():
             network_item = self.locations_info.get(location_id)
             if not network_item:
                 continue
@@ -388,6 +388,16 @@ class WesnothContext(CommonContext):
             player_name = self.player_names.get(network_item.player, f"Player {network_item.player}")
             rewards.append(f"{location_name}|{item_name}|{player_name}")
         return sorted(rewards)
+
+    def active_location_ids(self) -> dict[str, int]:
+        active_names = self.slot_data.get("active_locations", [])
+        if not isinstance(active_names, list):
+            return {}
+        return {
+            location_name: LOCATION_NAME_TO_ID[location_name]
+            for location_name in active_names
+            if location_name in LOCATION_NAME_TO_ID
+        }
 
     def write_current_state(self, bridge_state: BridgeState) -> None:
         current_state = self.build_bridge_state(bridge_state)
@@ -438,10 +448,11 @@ async def game_watcher(ctx: WesnothContext) -> None:
             ctx.write_current_state(bridge_state)
 
             if ctx.server and not ctx.requested_location_scouts:
-                scout_locations = set(LOCATION_NAME_TO_ID.values())
-                ctx.locations_scouted |= scout_locations
-                await ctx.send_msgs([{"cmd": "LocationScouts", "locations": sorted(scout_locations)}])
-                ctx.requested_location_scouts = True
+                scout_locations = set(ctx.active_location_ids().values())
+                if scout_locations:
+                    ctx.locations_scouted |= scout_locations
+                    await ctx.send_msgs([{"cmd": "LocationScouts", "locations": sorted(scout_locations)}])
+                    ctx.requested_location_scouts = True
 
             newly_seen_names = bridge_state.checked_locations - ctx.logged_checks_seen
             if newly_seen_names:
