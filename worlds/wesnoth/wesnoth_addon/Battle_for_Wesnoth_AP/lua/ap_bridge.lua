@@ -92,11 +92,28 @@ local function write_variable_array(name, field, values)
     end
 end
 
-function bridge.load()
+local function announce_new_items(items)
+    local announced = table_from_variable_array("ap_announced_items", "name")
+    if #items < #announced then
+        return
+    end
+    for index = #announced + 1, #items do
+        wesnoth.wml_actions.message {
+            speaker = "narrator",
+            message = "Archipelago item received: " .. items[index]
+        }
+    end
+    write_variable_array("ap_announced_items", "name", items)
+end
+
+function bridge.load(announce_items)
     local contents = read_file(ITEM_STATE_FILE)
     local items = parse_array(contents, "received_items")
     local seed_name = parse_string(contents, "seed_name")
     write_variable_array("ap_received_items", "name", items)
+    if announce_items then
+        announce_new_items(items)
+    end
     if seed_name and seed_name ~= "" then
         wesnoth.set_variable("ap_seed_name", seed_name)
     end

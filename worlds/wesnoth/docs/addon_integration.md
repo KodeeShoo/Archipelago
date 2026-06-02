@@ -7,6 +7,7 @@ The `Battle_for_Wesnoth_AP` add-on now separates reusable Archipelago helpers fr
 `wesnoth_addon/Battle_for_Wesnoth_AP/macros/ap_checks.cfg` contains generic macros:
 
 - `AP_LOAD_BRIDGE` reads AP client state from `ap_items.json`.
+- `AP_LOAD_BRIDGE_NOTIFY` reads AP client state and shows narrator messages for newly received items.
 - `AP_MARK_LOCATION` records a location check in saved Wesnoth variables.
 - `AP_HAS_ITEM` tests whether a received AP item is present.
 - `AP_ALLOW_RECRUIT_ITEM` unlocks a recruit type when an AP item is received.
