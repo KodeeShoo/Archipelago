@@ -106,6 +106,19 @@ local function write_chest_array(values)
     end
 end
 
+local function write_location_reward_array(values)
+    wesnoth.set_variable("ap_location_rewards")
+    for index, value in ipairs(values) do
+        local location, item, player = value:match("^(.-)|(.-)|(.-)$")
+        if location and item and player then
+            local prefix = "ap_location_rewards[" .. (index - 1) .. "]"
+            wesnoth.set_variable(prefix .. ".location", location)
+            wesnoth.set_variable(prefix .. ".item", item)
+            wesnoth.set_variable(prefix .. ".player", player)
+        end
+    end
+end
+
 local function announce_new_items(items)
     local announced = table_from_variable_array("ap_announced_items", "name")
     if #items < #announced then
@@ -128,11 +141,13 @@ function bridge.load(announce_items)
     local recruits = parse_array(contents, "unlocked_recruits")
     local attacks = parse_array(contents, "unlocked_attacks")
     local chests = parse_array(contents, "two_brothers_chests")
+    local rewards = parse_array(contents, "location_rewards")
     write_variable_array("ap_received_items", "name", items)
     write_variable_array("ap_roster_units", "type", roster)
     write_variable_array("ap_unlocked_recruits", "type", recruits)
     write_variable_array("ap_unlocked_attacks", "name", attacks)
     write_chest_array(chests)
+    write_location_reward_array(rewards)
     wesnoth.set_variable("ap_recruit_list", table.concat(recruits, ","))
     if announce_items then
         announce_new_items(items)
@@ -155,6 +170,21 @@ function bridge.is_location_checked(name)
         end
     end
     return false
+end
+
+function bridge.location_reward_text(name)
+    local count = wesnoth.get_variable("ap_location_rewards.length") or 0
+    for index = 0, count - 1 do
+        local prefix = "ap_location_rewards[" .. index .. "]"
+        if wesnoth.get_variable(prefix .. ".location") == name then
+            local item = wesnoth.get_variable(prefix .. ".item")
+            local player = wesnoth.get_variable(prefix .. ".player")
+            if item and player then
+                return item .. " for " .. player
+            end
+        end
+    end
+    return nil
 end
 
 function bridge.mark_location(name)
@@ -214,7 +244,7 @@ function bridge.check_chest_at(scenario_id, x, y)
             checked_name = chest.name
         end
     end)
-    return checked_name
+    return checked_name, bridge.location_reward_text(checked_name)
 end
 
 function bridge.has_item(name)

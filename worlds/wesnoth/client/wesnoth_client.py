@@ -145,6 +145,7 @@ def write_item_state(
     addon_dir: Path | None,
     seed_name: str | None = None,
     slot_data: dict[str, Any] | None = None,
+    location_rewards: list[str] | None = None,
 ) -> None:
     if not addon_dir:
         return
@@ -156,6 +157,7 @@ def write_item_state(
         "unlocked_recruits": unlocked_recruits,
         "unlocked_attacks": unlocked_attacks,
         "two_brothers_chests": slot_chest_strings(slot_data),
+        "location_rewards": location_rewards or [],
     }
     path = addon_dir / ITEM_STATE_FILENAME
     temp_path = path.with_suffix(path.suffix + ".tmp")
@@ -329,8 +331,9 @@ class WesnothContext(CommonContext):
         self.sync_requested = False
         self.logged_checks_seen: set[str] = set()
         self.pending_locations: set[int] = set()
-        self.last_written_item_state: tuple[list[str], str | None, str] | None = None
+        self.last_written_item_state: tuple[list[str], str | None, str, tuple[str, ...]] | None = None
         self.wesnoth_seed_name: str | None = None
+        self.requested_location_scouts = False
 
     async def server_auth(self, password_requested: bool = False) -> None:
         if password_requested and not self.password:
@@ -344,8 +347,9 @@ class WesnothContext(CommonContext):
             self.sync_requested = True
         elif cmd == "Connected":
             self.slot_data = dict(args.get("slot_data", {}))
+            self.requested_location_scouts = False
             self.sync_requested = True
-        elif cmd in {"ReceivedItems", "RoomUpdate"}:
+        elif cmd in {"ReceivedItems", "RoomUpdate", "LocationInfo"}:
             self.sync_requested = True
 
     def run_gui(self) -> None:
@@ -374,15 +378,43 @@ class WesnothContext(CommonContext):
             location_name_to_id=dict(LOCATION_NAME_TO_ID),
         )
 
+    def location_reward_strings(self) -> list[str]:
+        rewards = []
+        for location_name, location_id in LOCATION_NAME_TO_ID.items():
+            network_item = self.locations_info.get(location_id)
+            if not network_item:
+                continue
+            item_name = self.item_names.lookup_in_slot(network_item.item, network_item.player)
+            player_name = self.player_names.get(network_item.player, f"Player {network_item.player}")
+            rewards.append(f"{location_name}|{item_name}|{player_name}")
+        return sorted(rewards)
+
     def write_current_state(self, bridge_state: BridgeState) -> None:
         current_state = self.build_bridge_state(bridge_state)
         write_bridge_state(current_state, self.bridge_path)
-        item_state = (current_state.received_items, self.wesnoth_seed_name, json.dumps(self.slot_data, sort_keys=True))
+        location_rewards = self.location_reward_strings()
+        item_state = (
+            current_state.received_items,
+            self.wesnoth_seed_name,
+            json.dumps(self.slot_data, sort_keys=True),
+            tuple(location_rewards),
+        )
         if item_state != self.last_written_item_state:
-            write_item_state(current_state.received_items, self.addon_dir, self.wesnoth_seed_name, self.slot_data)
+            write_item_state(
+                current_state.received_items,
+                self.addon_dir,
+                self.wesnoth_seed_name,
+                self.slot_data,
+                location_rewards,
+            )
             previous_count = len(self.last_written_item_state[0] if self.last_written_item_state else [])
             new_items = current_state.received_items[previous_count:]
-            self.last_written_item_state = (list(current_state.received_items), self.wesnoth_seed_name, json.dumps(self.slot_data, sort_keys=True))
+            self.last_written_item_state = (
+                list(current_state.received_items),
+                self.wesnoth_seed_name,
+                json.dumps(self.slot_data, sort_keys=True),
+                tuple(location_rewards),
+            )
             if new_items:
                 logger.info("Wrote received Wesnoth items: %s", ", ".join(new_items))
 
@@ -404,6 +436,12 @@ async def game_watcher(ctx: WesnothContext) -> None:
         try:
             bridge_state = read_save_bridge_state(ctx.wesnoth_userdir, ctx.wesnoth_seed_name)
             ctx.write_current_state(bridge_state)
+
+            if ctx.server and not ctx.requested_location_scouts:
+                scout_locations = set(LOCATION_NAME_TO_ID.values())
+                ctx.locations_scouted |= scout_locations
+                await ctx.send_msgs([{"cmd": "LocationScouts", "locations": sorted(scout_locations)}])
+                ctx.requested_location_scouts = True
 
             newly_seen_names = bridge_state.checked_locations - ctx.logged_checks_seen
             if newly_seen_names:
