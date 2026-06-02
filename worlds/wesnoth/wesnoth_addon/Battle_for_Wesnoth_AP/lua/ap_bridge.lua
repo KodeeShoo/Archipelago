@@ -92,6 +92,20 @@ local function write_variable_array(name, field, values)
     end
 end
 
+local function write_chest_array(values)
+    wesnoth.set_variable("ap_two_brothers_chests")
+    for index, value in ipairs(values) do
+        local name, scenario, x, y = value:match("^(.-)|(.-)|(%d+)|(%d+)$")
+        if name and scenario and x and y then
+            local prefix = "ap_two_brothers_chests[" .. (index - 1) .. "]"
+            wesnoth.set_variable(prefix .. ".name", name)
+            wesnoth.set_variable(prefix .. ".scenario", scenario)
+            wesnoth.set_variable(prefix .. ".x", tonumber(x))
+            wesnoth.set_variable(prefix .. ".y", tonumber(y))
+        end
+    end
+end
+
 local function announce_new_items(items)
     local announced = table_from_variable_array("ap_announced_items", "name")
     if #items < #announced then
@@ -110,7 +124,16 @@ function bridge.load(announce_items)
     local contents = read_file(ITEM_STATE_FILE)
     local items = parse_array(contents, "received_items")
     local seed_name = parse_string(contents, "seed_name")
+    local roster = parse_array(contents, "roster_units")
+    local recruits = parse_array(contents, "unlocked_recruits")
+    local attacks = parse_array(contents, "unlocked_attacks")
+    local chests = parse_array(contents, "two_brothers_chests")
     write_variable_array("ap_received_items", "name", items)
+    write_variable_array("ap_roster_units", "type", roster)
+    write_variable_array("ap_unlocked_recruits", "type", recruits)
+    write_variable_array("ap_unlocked_attacks", "name", attacks)
+    write_chest_array(chests)
+    wesnoth.set_variable("ap_recruit_list", table.concat(recruits, ","))
     if announce_items then
         announce_new_items(items)
     end
@@ -124,11 +147,74 @@ function bridge.save()
     -- The Python client reads checks from autosaves instead.
 end
 
+function bridge.is_location_checked(name)
+    local checked = table_from_variable_array("ap_checked_locations", "name")
+    for _, location in ipairs(checked) do
+        if location == name then
+            return true
+        end
+    end
+    return false
+end
+
 function bridge.mark_location(name)
     bridge.load()
     local checked = table_from_variable_array("ap_checked_locations", "name")
     table.insert(checked, name)
     write_variable_array("ap_checked_locations", "name", unique_sorted(checked))
+end
+
+local function each_chest(scenario_id, callback)
+    local count = wesnoth.get_variable("ap_two_brothers_chests.length") or 0
+    for index = 0, count - 1 do
+        local prefix = "ap_two_brothers_chests[" .. index .. "]"
+        local scenario = wesnoth.get_variable(prefix .. ".scenario")
+        if scenario == scenario_id then
+            callback({
+                name = wesnoth.get_variable(prefix .. ".name"),
+                x = wesnoth.get_variable(prefix .. ".x"),
+                y = wesnoth.get_variable(prefix .. ".y")
+            })
+        end
+    end
+end
+
+function bridge.place_chests(scenario_id)
+    bridge.load()
+    each_chest(scenario_id, function(chest)
+        if chest.name and chest.x and chest.y and not bridge.is_location_checked(chest.name) then
+            wesnoth.wml_actions.item {
+                x = chest.x,
+                y = chest.y,
+                image = "items/chest-plain-closed.png"
+            }
+        end
+    end)
+end
+
+function bridge.check_chest_at(scenario_id, x, y)
+    bridge.load()
+    local checked_name = nil
+    each_chest(scenario_id, function(chest)
+        if checked_name then
+            return
+        end
+        if chest.name and tonumber(chest.x) == tonumber(x) and tonumber(chest.y) == tonumber(y) and not bridge.is_location_checked(chest.name) then
+            wesnoth.wml_actions.remove_item {
+                x = chest.x,
+                y = chest.y,
+                image = "items/chest-plain-closed.png"
+            }
+            wesnoth.wml_actions.item {
+                x = chest.x,
+                y = chest.y,
+                image = "items/chest-plain-open.png"
+            }
+            bridge.mark_location(chest.name)
+            checked_name = chest.name
+        end
+    end)
+    return checked_name
 end
 
 function bridge.has_item(name)

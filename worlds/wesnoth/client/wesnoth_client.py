@@ -118,12 +118,44 @@ def find_addon_dir(userdir: Path | None) -> Path | None:
     return addon_dir if addon_dir.exists() else None
 
 
-def write_item_state(received_items: list[str], addon_dir: Path | None, seed_name: str | None = None) -> None:
+def item_state_unlocks(received_items: list[str], slot_data: dict[str, Any] | None = None) -> tuple[list[str], list[str]]:
+    all_items = [*list((slot_data or {}).get("precollected_items", [])), *received_items]
+    recruits = []
+    attacks = []
+    for item in all_items:
+        if item.startswith("Recruit: "):
+            recruits.append(item.removeprefix("Recruit: "))
+        elif item.startswith("Attack: "):
+            attacks.append(item.removeprefix("Attack: "))
+    return sorted(set(recruits)), sorted(set(attacks))
+
+
+def slot_chest_strings(slot_data: dict[str, Any] | None = None) -> list[str]:
+    chests = []
+    for chest in (slot_data or {}).get("two_brothers_chests", []):
+        try:
+            chests.append(f"{chest['name']}|{chest['scenario']}|{int(chest['x'])}|{int(chest['y'])}")
+        except (KeyError, TypeError, ValueError):
+            continue
+    return chests
+
+
+def write_item_state(
+    received_items: list[str],
+    addon_dir: Path | None,
+    seed_name: str | None = None,
+    slot_data: dict[str, Any] | None = None,
+) -> None:
     if not addon_dir:
         return
+    unlocked_recruits, unlocked_attacks = item_state_unlocks(received_items, slot_data)
     payload = {
         "received_items": received_items,
         "seed_name": seed_name or "",
+        "roster_units": list((slot_data or {}).get("roster_units", [])),
+        "unlocked_recruits": unlocked_recruits,
+        "unlocked_attacks": unlocked_attacks,
+        "two_brothers_chests": slot_chest_strings(slot_data),
     }
     path = addon_dir / ITEM_STATE_FILENAME
     temp_path = path.with_suffix(path.suffix + ".tmp")
@@ -297,7 +329,7 @@ class WesnothContext(CommonContext):
         self.sync_requested = False
         self.logged_checks_seen: set[str] = set()
         self.pending_locations: set[int] = set()
-        self.last_written_item_state: tuple[list[str], str | None] | None = None
+        self.last_written_item_state: tuple[list[str], str | None, str] | None = None
         self.wesnoth_seed_name: str | None = None
 
     async def server_auth(self, password_requested: bool = False) -> None:
@@ -345,12 +377,12 @@ class WesnothContext(CommonContext):
     def write_current_state(self, bridge_state: BridgeState) -> None:
         current_state = self.build_bridge_state(bridge_state)
         write_bridge_state(current_state, self.bridge_path)
-        item_state = (current_state.received_items, self.wesnoth_seed_name)
+        item_state = (current_state.received_items, self.wesnoth_seed_name, json.dumps(self.slot_data, sort_keys=True))
         if item_state != self.last_written_item_state:
-            write_item_state(current_state.received_items, self.addon_dir, self.wesnoth_seed_name)
+            write_item_state(current_state.received_items, self.addon_dir, self.wesnoth_seed_name, self.slot_data)
             previous_count = len(self.last_written_item_state[0] if self.last_written_item_state else [])
             new_items = current_state.received_items[previous_count:]
-            self.last_written_item_state = (list(current_state.received_items), self.wesnoth_seed_name)
+            self.last_written_item_state = (list(current_state.received_items), self.wesnoth_seed_name, json.dumps(self.slot_data, sort_keys=True))
             if new_items:
                 logger.info("Wrote received Wesnoth items: %s", ", ".join(new_items))
 
