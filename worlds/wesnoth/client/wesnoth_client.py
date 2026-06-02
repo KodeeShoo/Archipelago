@@ -193,7 +193,7 @@ def wesnoth_ap_save_candidates(userdir: Path | None) -> list[Path]:
         path
         for path in saves_dir.iterdir()
         if path.is_file()
-        and path.name.startswith("Wesnoth AP-")
+        and " AP-" in path.name
         and (path.suffix.lower() == ".gz" or path.suffix == "")
     ]
 
@@ -294,9 +294,9 @@ def read_save_bridge_state(userdir: Path | None, seed_name: str | None = None) -
         latest_save_path, latest_save_text = latest_save
         bridge_state = parse_save_bridge_state(latest_save_text)
 
-        newest_replay = latest_wesnoth_ap_replay(userdir)
-        if newest_replay and newest_replay.stat().st_mtime >= latest_save_path.stat().st_mtime:
-            bridge_state.goal_complete = bridge_state.goal_complete or parse_replay_goal_complete(read_save_text(newest_replay))
+        newest_replay = read_latest_matching_save(userdir, seed_name, replay=True)
+        if newest_replay and newest_replay[0].stat().st_mtime >= latest_save_path.stat().st_mtime:
+            bridge_state.goal_complete = bridge_state.goal_complete or parse_replay_goal_complete(newest_replay[1])
 
     return bridge_state
 
