@@ -75,6 +75,18 @@ end
 
 local function table_from_variable_array(name, field)
     local values = {}
+    if wml and wml.array_access then
+        local ok, rows = pcall(wml.array_access.get, name)
+        if ok and type(rows) == "table" then
+            for _, row in ipairs(rows) do
+                if row[field] then
+                    table.insert(values, row[field])
+                end
+            end
+            return values
+        end
+    end
+
     local count = wesnoth.get_variable(name .. ".length") or 0
     for index = 0, count - 1 do
         local value = wesnoth.get_variable(name .. "[" .. index .. "]." .. field)
@@ -184,6 +196,17 @@ function bridge.location_reward_text(name)
         end
     end
 
+    if wml and wml.array_access then
+        local ok, rewards = pcall(wml.array_access.get, "ap_location_rewards")
+        if ok and type(rewards) == "table" then
+            for _, reward in ipairs(rewards) do
+                if reward.location == name and reward.item and reward.player then
+                    return reward.item .. " for " .. reward.player
+                end
+            end
+        end
+    end
+
     local count = wesnoth.get_variable("ap_location_rewards.length") or 0
     for index = 0, count - 1 do
         local prefix = "ap_location_rewards[" .. index .. "]"
@@ -206,6 +229,22 @@ function bridge.mark_location(name)
 end
 
 local function each_chest(scenario_id, callback)
+    if wml and wml.array_access then
+        local ok, chests = pcall(wml.array_access.get, "ap_two_brothers_chests")
+        if ok and type(chests) == "table" then
+            for _, chest in ipairs(chests) do
+                if chest.scenario == scenario_id then
+                    callback({
+                        name = chest.name,
+                        x = chest.x,
+                        y = chest.y
+                    })
+                end
+            end
+            return
+        end
+    end
+
     local count = wesnoth.get_variable("ap_two_brothers_chests.length") or 0
     for index = 0, count - 1 do
         local prefix = "ap_two_brothers_chests[" .. index .. "]"
