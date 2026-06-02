@@ -173,6 +173,17 @@ function bridge.is_location_checked(name)
 end
 
 function bridge.location_reward_text(name)
+    if not name then
+        return nil
+    end
+
+    for _, value in ipairs(parse_array(read_file(ITEM_STATE_FILE), "location_rewards")) do
+        local location, item, player = value:match("^(.-)|(.-)|(.-)$")
+        if location == name and item and player then
+            return item .. " for " .. player
+        end
+    end
+
     local count = wesnoth.get_variable("ap_location_rewards.length") or 0
     for index = 0, count - 1 do
         local prefix = "ap_location_rewards[" .. index .. "]"
@@ -225,6 +236,7 @@ end
 function bridge.check_chest_at(scenario_id, x, y)
     bridge.load()
     local checked_name = nil
+    local checked_reward = nil
     each_chest(scenario_id, function(chest)
         if checked_name then
             return
@@ -240,11 +252,12 @@ function bridge.check_chest_at(scenario_id, x, y)
                 y = chest.y,
                 image = "items/chest-plain-open.png"
             }
+            checked_reward = bridge.location_reward_text(chest.name)
             bridge.mark_location(chest.name)
             checked_name = chest.name
         end
     end)
-    return checked_name, bridge.location_reward_text(checked_name)
+    return checked_name, checked_reward or bridge.location_reward_text(checked_name)
 end
 
 function bridge.has_item(name)
