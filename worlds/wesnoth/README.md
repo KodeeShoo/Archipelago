@@ -36,6 +36,12 @@ wesnoth.apworld
 
 The included `tools/build_apworld.ps1` does this from the framework folder.
 
+## Wesnoth Add-on Integration Layer
+
+The add-on exposes reusable AP WML/Lua helpers in `macros/ap_checks.cfg`.
+Scenario-specific item behavior lives in separate macro files such as `macros/ap_training_items.cfg`.
+See `docs/addon_integration.md` for the current macro surface.
+
 ## Install the Wesnoth Add-on Skeleton
 
 Copy `wesnoth_addon/Battle_for_Wesnoth_AP` to Wesnoth's add-ons directory:

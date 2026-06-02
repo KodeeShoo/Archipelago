@@ -1,0 +1,8 @@
+title="Battle for Wesnoth AP Prototype"
+type="campaign"
+icon="units/human-loyalists/lieutenant.png"
+version="0.0.1"
+author="KodeeShoo"
+passphrase=""
+description="Prototype Archipelago integration layer and test campaign for Battle for Wesnoth."
+email=""
