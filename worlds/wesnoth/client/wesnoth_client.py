@@ -24,6 +24,7 @@ from NetUtils import ClientStatus
 
 from worlds.wesnoth.items import ITEM_NAME_TO_ID
 from worlds.wesnoth.locations import LOCATION_NAME_TO_ID
+from worlds.wesnoth.two_brothers import SCENARIO_MAPS, walkable_land_positions
 
 GAME_NAME = "Battle for Wesnoth"
 DEFAULT_BRIDGE_FILE = Path.home() / "Documents" / "My Games" / "WesnothAP" / "bridge_state.json"
@@ -134,10 +135,24 @@ def slot_chest_strings(slot_data: dict[str, Any] | None = None) -> list[str]:
     chests = []
     for chest in (slot_data or {}).get("two_brothers_chests", []):
         try:
-            chests.append(f"{chest['name']}|{chest['scenario']}|{int(chest['x'])}|{int(chest['y'])}")
+            x, y = repaired_chest_position(str(chest["scenario"]), int(chest["x"]), int(chest["y"]))
+            chests.append(f"{chest['name']}|{chest['scenario']}|{x}|{y}")
         except (KeyError, TypeError, ValueError):
             continue
     return chests
+
+
+def repaired_chest_position(scenario_id: str, x: int, y: int) -> tuple[int, int]:
+    map_name = SCENARIO_MAPS.get(scenario_id)
+    if not map_name:
+        return x, y
+
+    walkable = set(walkable_land_positions(map_name))
+    if (x, y) in walkable:
+        return x, y
+    if (x - 1, y - 1) in walkable:
+        return x - 1, y - 1
+    return x, y
 
 
 def write_item_state(

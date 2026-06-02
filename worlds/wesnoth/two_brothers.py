@@ -200,10 +200,15 @@ def walkable_land_positions(map_name: str) -> list[tuple[int, int]]:
         return fallback_positions()
 
     positions = []
-    for y, line in enumerate(map_path.read_text(encoding="utf-8").splitlines(), start=1):
-        if not line or line.startswith("border_size=") or line.startswith("usage="):
-            continue
-        for x, terrain in enumerate(line.split(","), start=1):
+    map_rows = [
+        line
+        for line in map_path.read_text(encoding="utf-8").splitlines()
+        if line and not line.startswith("border_size=") and not line.startswith("usage=")
+    ]
+    playable_rows = map_rows[1:-1]
+    for y, line in enumerate(playable_rows, start=1):
+        terrains = line.split(",")
+        for x, terrain in enumerate(terrains[1:-1], start=1):
             base = terrain.strip().split()[0]
             if is_walkable_land(base):
                 positions.append((x, y))
